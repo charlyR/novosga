@@ -161,8 +161,7 @@ class InstallController extends InternalController {
             array('name' => 'PDO', 'key' => 'pdo', 'version_required' => '1.0.0', 'ext' => true),
             array('name' => $adapter['label'], 'key' => $driver, 'version_required' => $adapter['version'], 'ext' => true),
             array('name' => 'json', 'key' => 'json', 'ext' => true),
-            array('name' => 'gettext', 'key' => 'gettext', 'ext' => true),
-            array('name' => 'mcrypt', 'key' => 'mcrypt', 'ext' => true)
+            array('name' => 'gettext', 'key' => 'gettext', 'ext' => true)
         );
         foreach ($requiredsSetup as &$req) {
             $success = true;
@@ -211,6 +210,11 @@ class InstallController extends InternalController {
             if (is_writable($req['file'])) {
                 $req['result'] = _('Escrita');
                 $req['class'] = ''; //'success'
+            } 
+            else if (!is_dir($req['file'])) {
+                $fatal = true;
+                $req['result'] = _('Não existe');
+                $req['class'] = 'danger';
             } else {
                 $fatal = true;
                 $req['result'] = _('Somente leitura');
@@ -468,10 +472,10 @@ class InstallController extends InternalController {
                     $conn->exec(file_get_contents($sqlInitFile));
                     
                     // instalando modulos
-                    $mb = new \Novosga\Business\ModuloBusiness($em);
+                    $service = new \Novosga\Service\ModuloService($em);
                     $modules = $this->modules();
                     foreach ($modules as $dir) {
-                        $mb->install($dir, "sga." . basename($dir));
+                        $service->install($dir, "sga." . basename($dir), 1);
                     }
                     
                     // finalizando instalacao com SQL auxiliar

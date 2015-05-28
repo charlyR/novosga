@@ -1,7 +1,8 @@
 <?php
 namespace Novosga\Api;
 
-use Novosga\Business\AtendimentoBusiness;
+use Exception;
+use Novosga\Service\AtendimentoService;
 
 /**
  * Api V1
@@ -80,7 +81,7 @@ class ApiV1 extends Api {
             // servicos da unidade
             return $this->em->createQuery('
                 SELECT 
-                    s.id, e.sigla, e.nome, l.nome as local
+                    s.id, e.sigla, s.nome, l.nome as local
                 FROM
                     Novosga\Model\ServicoUnidade e
                     JOIN e.servico s
@@ -89,7 +90,7 @@ class ApiV1 extends Api {
                     e.status = 1 AND
                     e.unidade = :unidade
                 ORDER BY 
-                    e.nome ASC
+                    s.nome ASC
             ')->setParameter(':unidade', $unidade)
                 ->getResult();
         }
@@ -127,8 +128,8 @@ class ApiV1 extends Api {
     public function filaServicos($unidade, $servicos) {
         if (!empty($servicos)) {
             // fila de atendimento
-            $filaBusiness = new \Novosga\Business\FilaBusiness($this->em);
-            return $filaBusiness
+            $filaService = new \Novosga\Service\FilaService($this->em);
+            return $filaService
                         ->atendimento($unidade, $servicos)
                         ->getQuery()
                         ->getResult()
@@ -164,11 +165,56 @@ class ApiV1 extends Api {
     }
     
     /**
+     * Retorna o atendimento
+     * @param int $id Id do atendimento
+     * @return array
+     */
+    public function atendimento($id) {
+        // servicos que o usuario atende
+        $atendimento = $this->em->find('Novosga\Model\Atendimento', $id);
+        if (!$atendimento) {
+            throw new Exception(_('Atendimento inválido'));
+        }
+        return $atendimento->jsonSerialize(true);
+    }
+    
+    /**
+     * Retorna informações sobre o atendimento ainda não atendido
+     * @param int $id Id do atendimento
+     * @return array
+     */
+    public function atendimentoInfo($id) {
+        // servicos que o usuario atende
+        $atendimento = $this->em->find('Novosga\Model\Atendimento', $id);
+        if (!$atendimento) {
+            throw new Exception(_('Atendimento inválido'));
+        }
+        if ($atendimento->getStatus() !== \Novosga\Service\AtendimentoService::SENHA_EMITIDA) {
+            throw new Exception(_('Senha já atendida'));
+        }
+        $filaService = new \Novosga\Service\FilaService($this->em);
+        $atendimentos = $filaService->filaServico($atendimento->getUnidade(), $atendimento->getServico());
+
+        $pos = 1;
+        foreach ($atendimentos as $a) {
+            if ($atendimento->getId() === $a->getId()) {
+                break;
+            }
+            $pos++;
+        }
+        return array(
+            'pos' => $pos,
+            'total' => sizeof($atendimentos),
+            'atendimento' => $atendimento->jsonSerialize(true)
+        );
+    }
+    
+    /**
      * Distribui uma nova senha
      */
     public function distribui($unidade, $usuario, $servico, $prioridade, $nomeCliente, $documentoCliente) {
-        $ab = new AtendimentoBusiness($this->em());
-        return $ab->distribuiSenha($unidade, $usuario, $servico, $prioridade, $nomeCliente, $documentoCliente);
+        $service = new AtendimentoService($this->em);
+        return $service->distribuiSenha($unidade, $usuario, $servico, $prioridade, $nomeCliente, $documentoCliente)->jsonSerialize();
     }
     
 }

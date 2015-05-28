@@ -20,15 +20,3 @@ define("MODULES_DIR", "modules");
 define("MODULES_PATH", NOVOSGA_ROOT . DS . MODULES_DIR);
 
 $loader = require $autoload;
-
-// i18n
-\Novosga\Util\I18n::bind();
-
-$db = new Novosga\Config\DatabaseConfig();
-$db->setDev(NOVOSGA_DEV);
-
-define("NOVOSGA_INSTALLED", $db->isIntalled());
-if (NOVOSGA_INSTALLED) {
-    $tipoNumeracao = \Novosga\Model\Configuracao::get($db->createEntityManager(), \Novosga\Model\Util\Senha::TIPO_NUMERACAO);
-    define("NOVOSGA_TIPO_NUMERACAO", $tipoNumeracao ? $tipoNumeracao->getValor() : \Novosga\Model\Util\Senha::NUMERACAO_UNICA);
-}

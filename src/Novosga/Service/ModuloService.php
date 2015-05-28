@@ -1,5 +1,5 @@
 <?php
-namespace Novosga\Business;
+namespace Novosga\Service;
 
 use Exception;
 use Novosga\Model\Modulo;
@@ -8,30 +8,34 @@ use Novosga\Util\FileUtils;
 use ZipArchive;
 
 /**
- * ModuloBusiness
+ * ModuloService
  *
  * @author Rogerio Lino <rogeriolino@gmail.com>
  */
-class ModuloBusiness extends ModelBusiness {
+class ModuloService extends ModelService {
     
     /**
      * 
      * @param string $moduleDir
+     * @param string $key Module keyname
+     * @param boolean $status Default module status
      * @return Modulo
      */
-    public function install($moduleDir, $key) {
+    public function install($moduleDir, $key, $status = 0) {
         $this->verifyKey($key);
         $this->verifyDir($moduleDir);
         $manifest = $this->parseManifest($moduleDir, $key);
+        $module = $manifest->getModule();
+        $module->setStatus($status);
         
         $this->invokeScripts($manifest, 'pre-install');
         
-        $this->em->persist($manifest->getModule());
+        $this->em->persist($module);
         $this->em->flush();
         
         $this->invokeScripts($manifest, 'post-install');
         
-        return $manifest->getModule();
+        return $module;
     }
     
     /**
@@ -86,20 +90,25 @@ class ModuloBusiness extends ModelBusiness {
         if (file_exists($moduleDir)) {
             throw new Exception(_('Já possui um módulo com o mesmo nome'));
         }
+        
+        $cacheDir = NOVOSGA_CACHE . DS . $name;
 
         // zip extract
         $zip = new ZipArchive(); 
         $zip->open($zipname);
-        $zip->extractTo(NOVOSGA_CACHE);
+        $zip->extractTo($cacheDir);
         $zip->close();
         
         // vendor dir
-        if (!is_dir($dir) && !@mkdir($dir)) {
-            FileUtils::rm(NOVOSGA_CACHE . DS . $name);
-            throw new Exception(_('Não foi possível criar o diretório do módulo'));
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir)) {
+                FileUtils::rm(NOVOSGA_CACHE . DS . $name);
+                throw new Exception(_('Não foi possível criar o diretório do módulo'));
+            }
+            chmod($dir, 0777);
         }
 
-        if (!@rename(NOVOSGA_CACHE . DS . $name, $moduleDir)) {
+        if (!@rename($cacheDir, $moduleDir)) {
             FileUtils::rm(NOVOSGA_CACHE . DS . $name);
             throw new Exception(_('Não foi possível mover os arquivos para o diretório dos módulos'));
         }

@@ -20,9 +20,21 @@ class DatabaseConfig extends ConfigFile {
     protected $cacheDriver;
     protected $isDev = false;
     
+    private static $instance;
+    
+    /**
+     * @param array $prop
+     * @return DatabaseConfig
+     */
+    public static function getInstance($prop = null) {
+        if (!self::$instance) {
+            self::$instance = new DatabaseConfig($prop);
+        }
+        return self::$instance;
+    }
 
     public function isIntalled() {
-        return $this->get('driver') && $this->get('host');
+        return ($this->get('driver') || $this->get('driverClass')) && $this->get('host');
     }
     
     public function name() {
@@ -53,6 +65,13 @@ class DatabaseConfig extends ConfigFile {
             $config->setMetadataCacheImpl($this->cacheDriver);
             $config->setQueryCacheImpl($this->cacheDriver);
             $config->setResultCacheImpl($this->cacheDriver);
+            
+            // custom config
+            $customSetup = $this->get('setup');
+            if ($customSetup && is_callable($customSetup)) {
+                $customSetup($config);
+            }
+            
             $this->em = EntityManager::create($this->values(), $config);
         }
         return $this->em;

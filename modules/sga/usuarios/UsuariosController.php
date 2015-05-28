@@ -79,7 +79,7 @@ class UsuariosController extends CrudController {
             $senha = $context->request()->post('senha');
             $confirmacao = $context->request()->post('senha2');
             // verifica e codifica a senha
-            $model->setSenha($this->app()->getAcessoBusiness()->verificaSenha($senha, $confirmacao));
+            $model->setSenha($this->app()->getAcessoService()->verificaSenha($senha, $confirmacao));
             $model->setStatus(1);
             $model->setSessionId('');
         } else {
@@ -96,36 +96,41 @@ class UsuariosController extends CrudController {
     }
     
     protected function postSave(Context $context, SequencialModel $model) {
-        $conn = $this->em()->getConnection();
         // lotacoes - atualizando permissoes do cargo
-        $query = $this->em()->createQuery("DELETE FROM Novosga\Model\Lotacao e WHERE e.usuario = :usuario");
-        $query->setParameter('usuario', $model->getId());
-        $query->execute();
+        $this->em()
+                ->createQuery("DELETE FROM Novosga\Model\Lotacao e WHERE e.usuario = :usuario")
+                ->setParameter('usuario', $model->getId())
+                ->execute()
+        ;
         $lotacoes = $context->request()->post('lotacoes', array());
         if (!empty($lotacoes)) {
-            $stmt = $conn->prepare("INSERT INTO usu_grup_cargo (grupo_id, cargo_id, usuario_id) VALUES (:grupo, :cargo, :usuario)");
             foreach ($lotacoes as $item) {
                 $value = explode(',', $item);
-                $stmt->bindValue('grupo', $value[0], \PDO::PARAM_INT);
-                $stmt->bindValue('cargo', $value[1], \PDO::PARAM_INT);
-                $stmt->bindValue('usuario', $model->getId(), \PDO::PARAM_INT);
-                $stmt->execute();
+                $lotacao = new \Novosga\Model\Lotacao();
+                $lotacao->setGrupo($this->em()->find('Novosga\Model\Grupo', $value[0]));
+                $lotacao->setCargo($this->em()->find('Novosga\Model\Cargo', $value[1]));
+                $lotacao->setUsuario($model);
+                $this->em()->persist($lotacao);
             }
+            $this->em()->flush();
         }
         // servicos
-        $query = $this->em()->createQuery("DELETE FROM Novosga\Model\ServicoUsuario e WHERE e.usuario = :usuario");
-        $query->setParameter('usuario', $model->getId());
-        $query->execute();
+        $this->em()
+                ->createQuery("DELETE FROM Novosga\Model\ServicoUsuario e WHERE e.usuario = :usuario")
+                ->setParameter('usuario', $model->getId())
+                ->execute()
+        ;
         $servicos = $context->request()->post('servicos', array());
         if (!empty($servicos)) {
-            $stmt = $conn->prepare("INSERT INTO usu_serv (unidade_id, servico_id, usuario_id) VALUES (:unidade, :servico, :usuario)");
             foreach ($servicos as $servico) {
                 $value = explode(',', $servico);
-                $stmt->bindValue('unidade', $value[0], \PDO::PARAM_INT);
-                $stmt->bindValue('servico', $value[1], \PDO::PARAM_INT);
-                $stmt->bindValue('usuario', $model->getId(), \PDO::PARAM_INT);
-                $stmt->execute();
+                $su = new \Novosga\Model\ServicoUsuario();
+                $su->setUnidade($this->em()->find('Novosga\Model\Unidade', $value[0]));
+                $su->setServico($this->em()->find('Novosga\Model\Servico', $value[1]));
+                $su->setUsuario($model);
+                $this->em()->persist($su);
             }
+            $this->em()->flush();
         }
     }
     
@@ -225,25 +230,13 @@ class UsuariosController extends CrudController {
     public function servicos_unidade(Context $context) {
         $response = new JsonResponse(true);
         $id = (int) $context->request()->get('unidade');
+        
         $exceto = $context->request()->get('exceto');
         $exceto = Arrays::valuesToInt(explode(',', $exceto));
-        $query = $this->em()->createQuery("
-            SELECT 
-                s.id, e.nome 
-            FROM 
-                Novosga\Model\ServicoUnidade e 
-                JOIN e.unidade u 
-                JOIN e.servico s 
-            WHERE 
-                e.status = 1 AND 
-                u = :unidade AND
-                s.id NOT IN (:exceto)
-            ORDER BY 
-                e.nome
-        ");
-        $query->setParameter('unidade', $id);
-        $query->setParameter('exceto', $exceto);
-        $response->data = $query->getResult();
+        $exceto = join(',', $exceto);
+        
+        $service = new \Novosga\Service\ServicoService($this->em());
+        $response->data = $service->servicosUnidade($id, "e.status = 1 AND s.id NOT IN ($exceto)");
         return $response;
     }
     
@@ -259,7 +252,7 @@ class UsuariosController extends CrudController {
         $usuario = $this->findById($id);
         if ($usuario) {
             try {
-                $hash = $this->app()->getAcessoBusiness()->verificaSenha($senha, $confirmacao);
+                $hash = $this->app()->getAcessoService()->verificaSenha($senha, $confirmacao);
                 $query = $this->em()->createQuery("UPDATE Novosga\Model\Usuario u SET u.senha = :senha WHERE u.id = :id");
                 $query->setParameter('senha', $hash);
                 $query->setParameter('id', $usuario->getId());

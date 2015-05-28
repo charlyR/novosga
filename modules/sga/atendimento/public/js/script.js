@@ -12,9 +12,10 @@ SGA.Atendimento = {
     marcarErroTriagem: '',
     nenhumServicoSelecionado: '',
     defaultTitle: '',
+    timeoutId: 0,
+    tiposAtendimento: {},
     
     init: function(status) {
-        setInterval(SGA.Atendimento.ajaxUpdate, SGA.updateInterval);
         SGA.Atendimento.ajaxUpdate();
         SGA.Atendimento.updateControls(status);
         $('#dialog-busca').on('show.bs.modal', function () {
@@ -28,44 +29,63 @@ SGA.Atendimento = {
     },
     
     ajaxUpdate: function() {
+        clearTimeout(SGA.Atendimento.timeoutId);
         if (!SGA.paused) {
             SGA.ajax({
-                url: SGA.url('get_fila'),
+                url: SGA.url('ajax_update'),
                 success: function(response) {
-                    if (response.success) {
-                        var list = $("#fila ul");
-                        // habilitando botao chamar
-                        if (response.data.length > 0) {
-                            $('#chamar .chamar').prop('disabled', false);
-                            // se a fila estava vazia e chegou um novo atendimento, entao toca o som
-                            if (list.find('li.empty').length > 0) {
-                                document.getElementById("alert").play();
-                                SGA.Notification.show('Atendimento', 'Novo atendimento na fila');
-                            }
-                        }
-                        list.text('');
-                        if (response.data.length > 0) {
-                            document.body.focus();
-                            for (var i = 0; i < response.data.length; i++) {
-                                var atendimento = response.data[i];
-                                var cssClass = atendimento.prioridade ? 'prioridade' : '';
-                                if (i == 0) {
-                                    cssClass += ' proximo';
-                                }
-                                var onclick = 'SGA.Atendimento.infoSenha(' + atendimento.id + ')';
-                                var title = atendimento.servico + ' (' + atendimento.espera + ')';
-                                var item = '<li><a class="' + cssClass + '" href="javascript:void(0)" onclick="' + onclick + '" title="' + title + '">' + atendimento.senha + '</a></li>';
-                                list.append(item);
-                            }
-                            document.title = "(" + response.data.length + ") " + SGA.Atendimento.defaultTitle;
-                        } else {
-                            $('#chamar .chamar').prop('disabled', true);
-                            list.append('<li class="empty">' + SGA.Atendimento.filaVazia + '</li>')
-                            document.title = SGA.Atendimento.defaultTitle;
+                    response.data = response.data || {};
+                    var atendimentos = response.data.atendimentos || [],
+                            usuario = response.data.usuario || {};
+                    var list = $("#fila ul");
+                    // habilitando botao chamar
+                    if (atendimentos.length > 0) {
+                        $('#chamar .chamar').prop('disabled', false);
+                        // se a fila estava vazia e chegou um novo atendimento, entao toca o som
+                        if (list.find('li.empty').length > 0) {
+                            document.getElementById("alert").play();
+                            SGA.Notification.show('Atendimento', 'Novo atendimento na fila');
                         }
                     }
+                    list.text('');
+                    if (atendimentos.length > 0) {
+                        document.body.focus();
+                        for (var i = 0; i < atendimentos.length; i++) {
+                            var atendimento = atendimentos[i];
+                            var cssClass = atendimento.prioridade ? 'prioridade' : '';
+                            if (i == 0) {
+                                cssClass += ' proximo';
+                            }
+                            var onclick = 'SGA.Atendimento.infoSenha(' + atendimento.id + ')';
+                            var title = atendimento.servico + ' (' + atendimento.espera + ')';
+                            var item = '<li><a class="' + cssClass + '" href="javascript:void(0)" onclick="' + onclick + '" title="' + title + '">' + atendimento.senha + '</a></li>';
+                            list.append(item);
+                        }
+                        document.title = "(" + atendimentos.length + ") " + SGA.Atendimento.defaultTitle;
+                    } else {
+                        $('#chamar .chamar').prop('disabled', true);
+                        list.append('<li class="empty">' + SGA.Atendimento.filaVazia + '</li>')
+                        document.title = SGA.Atendimento.defaultTitle;
+                    }
+                    if (usuario.numeroLocal) {
+                        $('span.config-numero-local').text(usuario.numeroLocal);
+                        $('.config-numero-local:input').val(usuario.numeroLocal);
+                    }
+                    if (usuario.tipoAtendimento) {
+                        $('span.config-tipo-atendimento')
+                                .removeClass('tipo-1 tipo-2')
+                                .addClass('tipo-' + usuario.tipoAtendimento)
+                                .text(SGA.Atendimento.tiposAtendimento[usuario.tipoAtendimento]);
+                        $('.config-tipo-atendimento:input').val(usuario.tipoAtendimento);
+                        ;
+                    }
+                },
+                complete: function() {
+                    SGA.Atendimento.timeoutId = setTimeout(SGA.Atendimento.ajaxUpdate, SGA.updateInterval);
                 }
             });
+        } else {
+            SGA.Atendimento.timeoutId = setTimeout(SGA.Atendimento.ajaxUpdate, SGA.updateInterval);
         }
     },
     

@@ -37,72 +37,51 @@ SGA.Unidade = {
     },
         
     Servicos: {
-        init: function() {
-            $('#servicos td.nome input').each(function(i,v) {
-                var input = $(v);
-                input.width(input.parent().width() - 60);
-            });
-        },
-        request: function(method, btn, complete) {
+        toggle: function(btn) {
             btn = $(btn);
             SGA.ajax({
-                url: SGA.url(method),
+                url: SGA.url('toggle_servico') + '/' + (btn.prop('checked') ? 1 : 0),
                 data: {id: btn.data('id')},
                 type: 'post',
                 success: function(response) {
-                    complete(response.success);
+                    if (btn.prop('checked')) {
+                        $('.servico-' + btn.data('id')).prop('disabled', false)
+                        $('#sigla-' + btn.data('id')).focus();
+                    } else {
+                        $('.servico-' + btn.data('id')).prop('disabled', true);
+                    }
                 },
                 error: function() {
                     btn.prop("disabled", false)
                 }
             });
         },
-        enable: function(btn) {
-            btn = $(btn);
-            btn.prop("disabled", true).addClass('hidden');
-            SGA.Unidade.Servicos.request('habilita_servico', btn, function() {
-                $('.servico-' + btn.data('id')).prop('disabled', false)
-                $('#btn-disable-' + btn.data('id')).prop("disabled", false).removeClass('hidden');
-                $('#sigla-' + btn.data('id')).focus();
-            });
-        },
-        
-        disable: function(btn) {
-            btn = $(btn);
-            btn.prop("disabled", true).addClass('hidden');
-            SGA.Unidade.Servicos.request('desabilita_servico', btn, function() {
-                $('.servico-' + btn.data('id')).prop('disabled', true);
-                $('#btn-enable-' + btn.data('id')).prop("disabled", false).removeClass('hidden');
-            });
-        },
         
         change: function(id) {
+            var peso = Math.max(1, $('#peso-' + id).val());
+            if (isNaN(peso)) {
+                peso = 1;
+            }
+            $('#peso-' + id).val(peso);
+            
             SGA.ajax({
                 url: SGA.url('update_servico'),
                 type: 'post',
                 data: {
                     id: id, 
                     sigla: $('#sigla-' + id).val(),
-                    nome: $('#nome-' + id).val(),
-                    local: $('#local-' + id).val()
+                    local: $('#local-' + id).val(),
+                    peso: peso
                 }
             });
-        },
-        
-        reverteNome: function(id) {
-            if (id > 0) {
-                SGA.ajax({
-                    url: SGA.url('reverte_nome'),
-                    type: 'post',
-                    data: {
-                        id: id
-                    },
-                    success: function(response) {
-                        $('#nome-' + id).val(response.data.nome);
-                    }
-                });
-            }
         }
-    },
+        
+    }
     
 };
+
+$(function() {
+   $('#servicos input:checkbox').bootstrapSwitch().on('switchChange.bootstrapSwitch', function(event, state) {
+       SGA.Unidade.Servicos.toggle(event.target);
+    }); 
+});

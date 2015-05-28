@@ -4,6 +4,7 @@ namespace Novosga\Model\Util;
 use Novosga\Model\Usuario;
 use Novosga\Model\Unidade;
 use Doctrine\ORM\EntityManager;
+use Novosga\Service\ServicoService;
 
 /**
  * Usuario utilizado para salvar na sessao. Assim evitar de salvar
@@ -26,6 +27,7 @@ class UsuarioSessao {
     private $servicosIndisponiveis;
     private $permissoes;
     private $tipoAtendimento;
+    private $sequenciaPrioridade;
     private $wrapped;
     
     /**
@@ -37,6 +39,7 @@ class UsuarioSessao {
         $this->id = $usuario->getId();
         $this->ativo = true;
         $this->tipoAtendimento = self::ATEND_TODOS;
+        $this->sequenciaPrioridade = 0;
         $this->wrapped = $usuario;
     }
         
@@ -150,51 +153,28 @@ class UsuarioSessao {
     
     /**
      * Retorna os servicos do usuario na unidade atual
-     * @return Locatacao
+     * @return \Novosga\Model\ServicoUsuario[]|\Doctrine\Common\Collections\ArrayCollection
      */
     public function getServicos() {
         if (!$this->servicos && $this->getUnidade()) {
-            $query = $this->em->createQuery("
-                SELECT 
-                    e 
-                FROM 
-                    Novosga\Model\ServicoUsuario e 
-                    JOIN 
-                        e.servico s 
-                WHERE 
-                    e.usuario = :usuario AND 
-                    e.unidade = :unidade AND 
-                    s.status = 1
-            ");
-            $query->setParameter('usuario', $this->getId());
-            $query->setParameter('unidade', $this->getUnidade()->getId());
-            $this->servicos = $query->getResult();
+            $service = new ServicoService($this->em);
+            $this->servicos = $service->servicosUsuario($this->getUnidade(), $this->getId());
         }
         return $this->servicos;
     }
     
+    public function setServicos($servicos) {
+        $this->servicos = $servicos;
+    }
+        
     /**
      * Retorna os servicos que o usuario nao atende na unidade atual
      * @return Locatacao
      */
     public function getServicosIndisponiveis() {
         if (!$this->servicosIndisponiveis && $this->getUnidade()) {
-            $query = $this->em->createQuery("
-                SELECT 
-                    e 
-                FROM 
-                    Novosga\Model\ServicoUnidade e
-                    JOIN e.servico s
-                WHERE 
-                    e.status = 1 AND
-                    e.unidade = :unidade AND
-                    s.id NOT IN (
-                        SELECT s2.id FROM Novosga\Model\ServicoUsuario a JOIN a.servico s2 WHERE a.usuario = :usuario AND a.unidade = :unidade
-                    )
-            ");
-            $query->setParameter('usuario', $this->getId());
-            $query->setParameter('unidade', $this->getUnidade()->getId());
-            $this->servicosIndisponiveis = $query->getResult();
+            $service = new ServicoService($this->em);
+            $this->servicosIndisponiveis = $service->servicosIndisponiveis($this->getUnidade(), $this->getId());
         }
         return $this->servicosIndisponiveis;
     }
@@ -223,6 +203,14 @@ class UsuarioSessao {
         $this->tipoAtendimento = $tipoAtendimento;
     }
     
+    public function getSequenciaPrioridade() {
+        return $this->sequenciaPrioridade;
+    }
+
+    public function setSequenciaPrioridade($sequenciaPrioridade) {
+        $this->sequenciaPrioridade = $sequenciaPrioridade;
+    }
+        
     public function getLogin() {
         return $this->getWrapped()->getLogin();
     }
@@ -259,7 +247,7 @@ class UsuarioSessao {
     }
     
     public function __sleep() {
-        return array('id', 'unidadeId', 'ativo', 'local', 'tipoAtendimento', 'permissoes');
+        return array('id', 'unidadeId', 'ativo', 'local', 'tipoAtendimento', 'permissoes', 'sequenciaPrioridade');
     }
     
     /**

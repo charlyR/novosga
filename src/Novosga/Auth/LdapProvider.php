@@ -4,11 +4,12 @@ namespace Novosga\Auth;
 use Novosga\Util\Arrays;
 
 /**
- * LDAP Authentication
+ * LDAP authentication provider
  *
  * @author Rogerio Lino <rogeriolino@gmail.com>
  */
-class LdapAuthentication extends Authentication {
+class LdapProvider extends DatabaseProvider 
+{
     
     const DEFAULT_PORT = 389;
     
@@ -22,6 +23,7 @@ class LdapAuthentication extends Authentication {
     
     public function init(array $config) {
         if (!empty($config)) {
+            parent::init($config);
             $this->host = Arrays::value($config, 'host');
             $this->baseDn = Arrays::value($config, 'baseDn');
             $this->loginAttribute = Arrays::value($config, 'loginAttribute');
@@ -67,7 +69,7 @@ class LdapAuthentication extends Authentication {
                 throw new \Exception($message);
             }
         }
-        return false;
+        return parent::auth($username, $password);
     }
     
     public function test() {

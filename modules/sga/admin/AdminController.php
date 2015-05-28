@@ -6,9 +6,9 @@ use Novosga\Context;
 use Novosga\Http\JsonResponse;
 use Novosga\Model\Configuracao;
 use Novosga\Model\Util\Senha;
-use Novosga\Auth\Authentication;
+use Novosga\Auth\AuthenticationProvider;
 use Novosga\Controller\ModuleController;
-use Novosga\Business\AtendimentoBusiness;
+use Novosga\Service\AtendimentoService;
 use Novosga\Model\Modulo;
 
 /**
@@ -28,7 +28,7 @@ class AdminController extends ModuleController {
         $query = $this->em()->createQuery("SELECT e FROM Novosga\Model\Unidade e ORDER BY e.nome");
         $unidades = $query->getResult();
         // método de autenticação
-        $auth = Configuracao::get($this->em(), Authentication::KEY);
+        $auth = Configuracao::get($this->em(), AuthenticationProvider::KEY);
         if ($auth) {
             $auth = $auth->getValor();
         } else {
@@ -45,7 +45,7 @@ class AdminController extends ModuleController {
                     'filter' => '',
                 )
             );
-            Configuracao::set($this->em(), Authentication::KEY, $auth);
+            Configuracao::set($this->em(), AuthenticationProvider::KEY, $auth);
         }
         // tipo de numeração de senha
         $numeracao = Configuracao::get($this->em(), Senha::TIPO_NUMERACAO);
@@ -58,7 +58,9 @@ class AdminController extends ModuleController {
         // view values
         $this->app()->view()->set('unidades', $unidades);
         // database config
-        $this->app()->view()->set('dbValues', $context->database()->values());
+        $this->app()->view()->set('dbValues', array_filter($context->database()->values(), function($item) {
+            return is_string($item);
+        }));
         // authentication config
         $this->app()->view()->set('auth', $auth);
         $this->app()->view()->set('numeracao', $numeracao);
@@ -68,7 +70,7 @@ class AdminController extends ModuleController {
     public function auth_save(Context $context) {
         $response = new JsonResponse();
         try {
-            $auth = Configuracao::get($this->em(), Authentication::KEY);
+            $auth = Configuracao::get($this->em(), AuthenticationProvider::KEY);
             $value = $auth->getValor();
             $type = $context->request()->post('type');
             $value['type'] = $type;
@@ -78,12 +80,12 @@ class AdminController extends ModuleController {
             foreach ($_POST as $k => $v) {
                 $value[$type][$k] = $v;
             }
-            $auth = \Novosga\Auth\AuthFactory::create($context, $type, $value);
+            $auth = App::authenticationFactory()->create($context, $value);
             if (!$auth) {
                 throw new \Exception(_('Opção inválida'));
             }
             $auth->test();
-            Configuracao::set($this->em(), Authentication::KEY, $value);
+            Configuracao::set($this->em(), AuthenticationProvider::KEY, $value);
             $response->success = true;
         } catch (\Exception $e) {
             $response->message = $e->getMessage();
@@ -97,8 +99,8 @@ class AdminController extends ModuleController {
             if (!$context->request()->isPost()) {
                 throw new Exception(_('Somente via POST'));
             }
-            $ab = new AtendimentoBusiness($this->em());
-            $ab->acumularAtendimentos();
+            $service = new AtendimentoService($this->em());
+            $service->acumularAtendimentos();
             $response->success = true;
         } catch (\Exception $e) {
             $response->message = $e->getMessage();
@@ -136,12 +138,14 @@ class AdminController extends ModuleController {
             // apaga se ja existir
             $this->delete_auth_client_by_id($client_id);
             // insere novo cliente
-            $conn = $this->em()->getConnection();
-            $stmt = $conn->prepare('INSERT INTO oauth_clients (client_id, client_secret, redirect_uri) VALUES (:client_id, :client_secret, :redirect_uri)');
-            $stmt->bindValue('client_id', $client_id);
-            $stmt->bindValue('client_secret', $client_secret);
-            $stmt->bindValue('redirect_uri', $redirect_uri);
-            $stmt->execute();
+            $client = new \Novosga\Model\OAuthClient();
+            $client->setId($client_id);
+            $client->setSecret($client_secret);
+            $client->setRedirectUri($redirect_uri);
+            
+            $this->em()->persist($client);
+            $this->em()->flush();
+            
             $response->success = true;
         } catch (\Exception $e) {
             $response->message = $e->getMessage();
@@ -152,20 +156,22 @@ class AdminController extends ModuleController {
     public function get_oauth_client(Context $context) {
         $response = new JsonResponse(true);
         $client_id = $context->request()->get('client_id');
-        $conn = $this->em()->getConnection();
-        $stmt = $conn->prepare('SELECT client_id, client_secret, redirect_uri FROM oauth_clients WHERE client_id = :client_id');
-        $stmt->bindValue('client_id', $client_id);
-        $stmt->execute();
-        $response->data = $stmt->fetch();
+        $query = $this->em()->createQuery('SELECT e FROM Novosga\Model\OAuthClient e WHERE e.id = :client_id');
+        $query->setParameter('client_id', $client_id);
+        $client = $query->getOneOrNullResult();
+        if ($client) {
+            $response->data = $client->jsonSerialize();
+        }
         return $response;
     }
     
     public function get_all_oauth_client(Context $context) {
         $response = new JsonResponse(true);
-        $conn = $this->em()->getConnection();
-        $stmt = $conn->prepare('SELECT client_id, client_secret, redirect_uri FROM oauth_clients ORDER BY client_id');
-        $stmt->execute();
-        $response->data = $stmt->fetchAll();
+        $rs = $this->em()->getRepository('Novosga\Model\OAuthClient')->findBy(array(), array('id' => 'ASC'));
+        $response->data = array();
+        foreach ($rs as $client) {
+            $response->data[] = $client->jsonSerialize();
+        }
         return $response;
     }
     
@@ -177,10 +183,9 @@ class AdminController extends ModuleController {
     }
     
     private function delete_auth_client_by_id($client_id) {
-        $conn = $this->em()->getConnection();
-        $stmt = $conn->prepare('DELETE FROM oauth_clients WHERE client_id = :client_id');
-        $stmt->bindValue('client_id', $client_id);
-        $stmt->execute();
+        $query = $this->em()->createQuery('DELETE Novosga\Model\OAuthClient e WHERE e.id = :client_id');
+        $query->setParameter('client_id', $client_id);
+        $query->execute();
     }
     
 }

@@ -27,7 +27,7 @@ Note: After installation remember to change the owner of the novosga directory: 
 
 A aplicação web escrita em PHP utilizando as melhores práticas de desenvolvimento.
 
-- PHP 5.3
+- PHP 5.4
 - HTML5
 - CSS3
 - [Doctrine PHP 2.4](http://www.doctrine-project.org/projects/orm.html)
@@ -38,7 +38,6 @@ A aplicação web escrita em PHP utilizando as melhores práticas de desenvolvim
 Testado no seguintes bancos:
 - [PostgreSQL](http://www.postgresql.org/)
 - [MySQL](http://www.mysql.org)
-- MS SQL
 
 
 ## Demo

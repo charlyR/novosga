@@ -1,6 +1,7 @@
 <?php
 namespace Novosga\Controller;
 
+use Novosga\App;
 use Novosga\Context;
 use Novosga\Util\Arrays;
 use Novosga\Controller\InternalController;
@@ -13,8 +14,8 @@ use Novosga\Controller\InternalController;
 class LoginController extends InternalController {
     
     public function index(Context $context) {
-        if ($this->app()->getAcessoBusiness()->isLogged($context)) {
-            if ($this->app()->getAcessoBusiness()->isValidSession($context)) {
+        if ($this->app()->getAcessoService()->isLogged($context)) {
+            if ($this->app()->getAcessoService()->isValidSession($context)) {
                 if ($context->getModulo()) {
                     $this->app()->gotoModule();
                 } else {
@@ -39,17 +40,20 @@ class LoginController extends InternalController {
         $password = $context->request()->post('password');
         $error = null;
         if (!empty($username) && !empty($password)) {
-            $user = $this->app()->auth($username, $password);
+            $em = $context->database()->createEntityManager();
+            $config = \Novosga\Model\Configuracao::get($em, \Novosga\Auth\AuthenticationProvider::KEY);
+            $auth = ($config) ? $config->getValor() : array();
+            $provider = App::authenticationFactory()->create($context, $auth);
+            $user = $provider->auth($username, $password);
             if ($user) {
                 // atualizando o session id
-                $em = $context->database()->createEntityManager();
                 $user->setSessionId(session_id());
                 $user->setUltimoAcesso(new \DateTime());
                 $em->merge($user);
                 $em->flush();
                 // caso o usuario so tenha acesso a uma unica unidade, ja define como atual
                 $us = new \Novosga\Model\Util\UsuarioSessao($user);
-                $unidades = $this->app()->getAcessoBusiness()->unidades($context, $us);
+                $unidades = $this->app()->getAcessoService()->unidades($context, $us);
                 if (sizeof($unidades) == 1) {
                     $us->setUnidade($unidades[0]);
                 }

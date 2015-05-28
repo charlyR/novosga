@@ -14,7 +14,7 @@ use Slim\Middleware;
 class AuthMiddleware extends Middleware {
     
     private $context;
-    public static $freePages = array('login', 'logout', 'api');
+    public static $freePages = array('login', 'logout', 'api', 'print');
     
     public function __construct(Context $context) {
         $this->context = $context;
@@ -39,18 +39,17 @@ class AuthMiddleware extends Middleware {
                             echo $response->toJson();
                             exit();
                         }
-                        $res = $this->app->response();
-                        $res->redirect($req->getRootUri() . '/logout');
+                        $this->app->response()->redirect($this->app->urlFor('logout'));
                     } else {
                         $unidade = $user->getUnidade();
-                        $acessoBusiness = $this->context->app()->getAcessoBusiness();
+                        $acessoService = $this->context->app()->getAcessoService();
                         // modulos globais
-                        $this->app->view()->set('modulosGlobal', $acessoBusiness->modulos($this->context, $user, Modulo::MODULO_GLOBAL));
+                        $this->app->view()->set('modulosGlobal', $acessoService->modulos($this->context, $user, Modulo::MODULO_GLOBAL));
                         // modulos unidades
                         if ($unidade) {
-                            $this->app->view()->set('modulosUnidade', $acessoBusiness->modulos($this->context, $user, Modulo::MODULO_UNIDADE));
+                            $this->app->view()->set('modulosUnidade', $acessoService->modulos($this->context, $user, Modulo::MODULO_UNIDADE));
                         }
-                        $this->app->view()->set('unidades', $acessoBusiness->unidades($this->context, $user));
+                        $this->app->view()->set('unidades', $acessoService->unidades($this->context, $user));
                         $this->app->view()->set('unidade', $unidade);
                         $this->app->view()->set('usuario', $user);
                     }
@@ -62,8 +61,7 @@ class AuthMiddleware extends Middleware {
                         echo $response->toJson();
                         exit();
                     }
-                    $res = $this->app->response();
-                    $res->redirect($req->getRootUri() . '/login');
+                    $this->app->response()->redirect($this->app->urlFor('login'));
                 }
             }
         }

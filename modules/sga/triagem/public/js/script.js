@@ -10,12 +10,39 @@ SGA.Triagem = {
     imprimir: false,
     pausado: false,
     prioridades: 0,
+    timeoutId: 0,
+    desabilitados: [],
     
     init: function() {
-        setInterval(SGA.Triagem.ajaxUpdate, SGA.updateInterval);
+        SGA.Triagem.ajaxUpdate();
         $('#dialog-busca').on('show.bs.modal', function () {
             $('#numero_busca').val('');
             $('#result_table tbody').html('');
+        });
+        
+        this.desabilitados = JSON.parse(SGA.Triagem.Storage.get('desabilitados') || '[]');
+        
+        for (var i = 0; i < this.desabilitados.length; i++) {
+            var item = this.desabilitados[i];
+            $('.exibir-servicos .servico-' + item).prop('checked', false);
+            $('#triagem-servico-' + item).hide();
+        }
+        
+        $('.exibir-servicos input').on('change', function() {
+            var elem = $(this);
+            var index = SGA.Triagem.desabilitados.indexOf(elem.val());
+            
+            if (index !== -1) {
+                SGA.Triagem.desabilitados.splice(index, 1);
+            }
+            if (!elem.is(':checked')) {
+                SGA.Triagem.desabilitados.push(elem.val());
+                $('#triagem-servico-' + elem.val()).hide();
+            } else {
+                $('#triagem-servico-' + elem.val()).show();
+            }
+            
+            SGA.Triagem.Storage.set('desabilitados', JSON.stringify(SGA.Triagem.desabilitados));
         });
     },
     
@@ -32,7 +59,7 @@ SGA.Triagem = {
                 var btnPrint = dialog.find('p.ultima-senha a');
                 btnPrint.off();
                 if (response.data.senhaId) {
-                    btnPrint.on('click', function() {
+                    btnPrint.show().on('click', function() {
                         SGA.Triagem.Impressao.loadIframe({ id: response.data.senhaId });
                         return false;
                     });
@@ -59,6 +86,7 @@ SGA.Triagem = {
     },
     
     ajaxUpdate: function() {
+        clearTimeout(SGA.Triagem.timeoutId);
         if (!SGA.paused) {
             SGA.ajax({
                 url: SGA.url('ajax_update'),
@@ -68,14 +96,30 @@ SGA.Triagem = {
                 success: function(response) {
                     $('.fila .total').text('-');
                     if (response.success) {
-                        for (var i in response.data) {
-                            var qtd = response.data[i];
-                            $('#total-aguardando-' + i).text(qtd.fila);
-                            $('#total-senhas-' + i).text(qtd.total);
+                        if (response.data.servicos) {
+                            for (var i in response.data.servicos) {
+                                var qtd = response.data.servicos[i];
+                                $('#total-aguardando-' + i).text(qtd.fila);
+                                $('#total-senhas-' + i).text(qtd.total);
+                            }
+                        }
+                        if (response.data.ultima) {
+                            var elem = $('#infobar .ultima-senha .label');
+                            elem.html('<span class="glyphicon glyphicon-print"></span> ' + response.data.ultima.senha);
+                            if (response.data.ultima.prioridade) {
+                                elem.removeClass('label-default').addClass('label-danger');
+                            } else {
+                                elem.removeClass('label-danger').addClass('label-default');
+                            }
                         }
                     }
+                },
+                complete: function() {
+                    SGA.Triagem.timeoutId = setTimeout(SGA.Triagem.ajaxUpdate, SGA.updateInterval);
                 }
             });
+        } else {
+            SGA.Triagem.timeoutId = setTimeout(SGA.Triagem.ajaxUpdate, SGA.updateInterval);
         }
     },
     
@@ -131,7 +175,7 @@ SGA.Triagem = {
                         width: 450, 
                         buttons: {},
                         open: function() {
-                            var a = response.data.atendimento;
+                            var a = response.data;
                             dialog.find('.numero').text(a.senha);
                             dialog.find('.servico').text(a.servico);
                             dialog.find('.nome-prioridade').text(a.nomePrioridade);
@@ -142,6 +186,8 @@ SGA.Triagem = {
                             }
                         }
                     });
+                },
+                complete: function() {
                     SGA.Triagem.pausado = false;
                 }
             });
@@ -205,6 +251,44 @@ SGA.Triagem = {
                 }
             }
         });
-    }
+    },
+    
+    Storage: {
+        
+        prefix: 'novosga.triagem.',
+
+        set: function(name, value) {
+            name = this.prefix + name;
+            if (localStorage) {
+                localStorage.setItem(name, value);
+            } else {
+                // cookie
+                var expires = "";
+                document.cookie = name + "=" + value + expires + "; path=/";
+            }
+        },
+                
+        get: function(name) {
+            name = this.prefix + name;
+            if (localStorage) {
+                return localStorage.getItem(name);
+            } else {
+                // cookie
+                var nameEQ = name + "=";
+                var ca = document.cookie.split(';');
+                for(var i = 0; i < ca.length; i++) {
+                    var c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1,c.length);
+                    }
+                    if (c.indexOf(nameEQ) === 0) {
+                        return c.substring(nameEQ.length, c.length);
+                    }
+                }
+            }
+            return null;
+        }
+
+    },
     
 };

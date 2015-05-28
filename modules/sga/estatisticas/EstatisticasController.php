@@ -4,12 +4,15 @@ namespace modules\sga\estatisticas;
 use Exception;
 use Novosga\App;
 use Novosga\Context;
-use Novosga\Business\AtendimentoBusiness;
+use Novosga\Service\AtendimentoService;
 use Novosga\Model\Modulo;
+use Novosga\Service\UnidadeService;
+use Novosga\Service\UsuarioService;
 use Novosga\Util\DateUtil;
 use Novosga\Http\JsonResponse;
 use modules\sga\estatisticas\Relatorio;
 use Novosga\Controller\ModuleController;
+use Novosga\Util\Strings;
 
 /**
  * EstatisticasController
@@ -50,13 +53,13 @@ class EstatisticasController extends ModuleController {
         $this->app()->view()->set('unidades', $unidades);
         $this->app()->view()->set('relatorios', $this->relatorios);
         $this->app()->view()->set('graficos', $this->graficos);
-        $this->app()->view()->set('statusAtendimento', AtendimentoBusiness::situacoes());
+        $this->app()->view()->set('statusAtendimento', AtendimentoService::situacoes());
         $arr = array();
         foreach ($unidades as $u) {
             $arr[$u->getId()] = $u->getNome();
         }
         $this->app()->view()->set('unidadesJson', json_encode($arr));
-        $this->app()->view()->set('now', \Novosga\Util\DateUtil::now(_('d/m/Y')));
+        $this->app()->view()->set('now', DateUtil::now(_('d/m/Y')));
     }
     
     /**
@@ -69,7 +72,7 @@ class EstatisticasController extends ModuleController {
             $fim = DateUtil::nowSQL(); // full datetime
             $unidade = (int) $context->request()->get('unidade');
             $status = $this->total_atendimentos_status($ini, $fim, $unidade);
-            $response->data['legendas'] = AtendimentoBusiness::situacoes();
+            $response->data['legendas'] = AtendimentoService::situacoes();
             $response->data['status'] = $status[$unidade];
             $servicos = $this->total_atendimentos_servico($ini, $fim, $unidade);
             $response->data['servicos'] = $servicos[$unidade];
@@ -94,7 +97,7 @@ class EstatisticasController extends ModuleController {
             $grafico = $this->graficos[$id];
             switch ($id) {
             case 1:
-                $grafico->setLegendas(AtendimentoBusiness::situacoes());
+                $grafico->setLegendas(AtendimentoService::situacoes());
                 $grafico->setDados($this->total_atendimentos_status($dataInicial, $dataFinal, $unidade));
                 break;
             case 2:
@@ -104,7 +107,7 @@ class EstatisticasController extends ModuleController {
                 $grafico->setDados($this->tempo_medio_atendimentos($dataInicial, $dataFinal, $unidade));
                 break;
             }
-            $response->data = $grafico->toArray();
+            $response->data = $grafico->jsonSerialize();
             $response->success = true;
         } catch (\Exception $e) {
             $response->message = $e->getMessage();
@@ -143,7 +146,8 @@ class EstatisticasController extends ModuleController {
                 $relatorio->setDados($this->tempo_medio_atendentes($dataInicial, $dataFinal));
                 break;
             case 7:
-                $relatorio->setDados($this->lotacoes($unidade));
+                $servico = $context->request()->get('servico');
+                $relatorio->setDados($this->lotacoes($unidade, $servico));
                 break;
             case 8:
                 $relatorio->setDados($this->cargos());
@@ -152,12 +156,7 @@ class EstatisticasController extends ModuleController {
             $this->app()->view()->set('relatorio', $relatorio);
         }
         $this->app()->view()->set('page', "relatorios/{$relatorio->getArquivo()}.html.twig");
-        $this->app()->view()->set('isNumeracaoServico', AtendimentoBusiness::isNumeracaoServico());
-        
-        // filtros
-        $this->app()->view()->getInstance()->addFilter(new \Novosga\Twig\SecFormat());
-        
-        $context->response()->setRenderView(false);
+        $this->app()->view()->set('isNumeracaoServico', AtendimentoService::isNumeracaoServico());
     }
     
     private function unidades() {
@@ -180,7 +179,7 @@ class EstatisticasController extends ModuleController {
     private function total_atendimentos_status($dataInicial, $dataFinal, $unidadeId = 0) {
         $unidades = $this->unidadesArray($unidadeId);
         $dados = array();
-        $status = AtendimentoBusiness::situacoes();
+        $status = AtendimentoService::situacoes();
         $query = $this->em()->createQuery("
             SELECT 
                 COUNT(e) as total 
@@ -226,7 +225,7 @@ class EstatisticasController extends ModuleController {
             GROUP BY 
                 s
         ");
-        $query->setParameter('status', AtendimentoBusiness::ATENDIMENTO_ENCERRADO_CODIFICADO);
+        $query->setParameter('status', AtendimentoService::ATENDIMENTO_ENCERRADO_CODIFICADO);
         $query->setParameter('inicio', $dataInicial);
         $query->setParameter('fim', $dataFinal);
         foreach ($unidades as $unidade) {
@@ -321,7 +320,7 @@ class EstatisticasController extends ModuleController {
                 e.status = 1 AND
                 e.unidade = :unidade 
             ORDER BY
-                e.nome
+                s.nome
         ");
         foreach ($unidades as $unidade) {
             $query->setParameter('unidade', $unidade);
@@ -382,7 +381,7 @@ class EstatisticasController extends ModuleController {
             ORDER BY
                 e.dataChegada
         ");
-        $query->setParameter('status', AtendimentoBusiness::ATENDIMENTO_ENCERRADO_CODIFICADO);
+        $query->setParameter('status', AtendimentoService::ATENDIMENTO_ENCERRADO_CODIFICADO);
         $query->setParameter('dataInicial', $dataInicial);
         $query->setParameter('dataFinal', $dataFinal);
         $query->setMaxResults(self::MAX_RESULTS);
@@ -449,7 +448,6 @@ class EstatisticasController extends ModuleController {
         $query->setParameter('dataInicial', $dataInicial);
         $query->setParameter('dataFinal', $dataFinal);
         $query->setMaxResults(self::MAX_RESULTS);
-        $dados = array();
         $rs = $query->getResult();
         foreach ($rs as $r) {
             $d = array(
@@ -478,32 +476,28 @@ class EstatisticasController extends ModuleController {
      * Retorna todos os usuarios e cargos (lotação) por unidade
      * @return array
      */
-    private function lotacoes($unidadeId = 0) {
+    private function lotacoes($unidadeId = 0, $nomeServico = '') {
+        $nomeServico = trim($nomeServico);
+        if (!empty($nomeServico)) {
+            $nomeServico = Strings::sqlLikeParam($nomeServico);
+        }
+        
         $unidades = $this->unidadesArray($unidadeId);
         $dados = array();
-        $query = $this->em()->createQuery("
-            SELECT
-                l
-            FROM
-                Novosga\Model\Lotacao l
-                LEFT JOIN l.usuario u
-                LEFT JOIN l.grupo g
-                LEFT JOIN l.cargo c
-            WHERE
-                g.left <= (
-                    SELECT g2.left FROM Novosga\Model\Grupo g2 WHERE g2.id = (SELECT u2g.id FROM Novosga\Model\Unidade u2 INNER JOIN u2.grupo u2g WHERE u2.id = :unidade)
-                ) AND
-                g.right >= (
-                    SELECT g3.right FROM Novosga\Model\Grupo g3 WHERE g3.id = (SELECT u3g.id FROM Novosga\Model\Unidade u3 INNER JOIN u3.grupo u3g WHERE u3.id = :unidade)
-                )
-            ORDER BY
-                u.login
-        ");
+        
+        $usuarioService = new UsuarioService($this->em());
+        $unidadeService = new UnidadeService($this->em());
+        
         foreach ($unidades as $unidade) {
-            $query->setParameter('unidade', $unidade);
+            $lotacoes = $unidadeService->lotacoesComServico($unidade->getId(), $nomeServico);
+            $servicos = array();
+            foreach ($lotacoes as $lotacao) {
+                $servicos[$lotacao->getUsuario()->getId()] = $usuarioService->servicos($lotacao->getUsuario(), $unidade);
+            }
             $dados[$unidade->getId()] = array(
                 'unidade' => $unidade->getNome(),
-                'lotacoes' => $query->getResult()
+                'lotacoes' => $lotacoes,
+                'servicos' => $servicos
             );
         }
         return $dados;

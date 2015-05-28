@@ -172,6 +172,7 @@ var SGA = {
             data: data,
             type: arg.type || 'get',
             dataType: arg.dataType || 'json',
+            cache: false,
             success: function(response) {
                 if (response && response.success) {
                     var fn = arg.success;
@@ -722,3 +723,21 @@ Array.prototype.contains = function(elem) {
     }
     return false;
 }
+
+
+$(function() {
+    
+    $('div.modal')
+    .on('shown.bs.modal', function() {
+        SGA.paused = true;
+        SGA.dialogs.opened++;
+    })
+    .on('hidden.bs.modal', function() {
+        SGA.dialogs.opened--;
+        if (SGA.dialogs.opened <= 0) {
+            SGA.paused = false;
+            SGA.dialogs.opened = 0;
+        }
+    });
+    
+});
